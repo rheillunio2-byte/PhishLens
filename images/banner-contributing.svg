@@ -1,0 +1,51 @@
+
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-labelledby="title desc">
+  <title id="title">Contributing to PhishLens</title>
+  <desc id="desc">A collaborative development banner with connected nodes and a code symbol.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#080E1C"></stop>
+      <stop offset=".55" stop-color="#111D37"></stop>
+      <stop offset="1" stop-color="#201338"></stop>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#38BDF8"></stop>
+      <stop offset=".55" stop-color="#818CF8"></stop>
+      <stop offset="1" stop-color="#C084FC"></stop>
+    </linearGradient>
+    <radialGradient id="glow">
+      <stop stop-color="#818CF8" stop-opacity=".25"></stop>
+      <stop offset="1" stop-color="#818CF8" stop-opacity="0"></stop>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="300" rx="24" fill="url(#bg)"></rect>
+  <circle cx="930" cy="140" r="190" fill="url(#glow)"></circle>
+
+  <g stroke="#64748B" stroke-width="1" opacity=".15">
+    <path d="M0 75H1200M0 150H1200M0 225H1200"></path>
+    <path d="M150 0V300M300 0V300M450 0V300M600 0V300M750 0V300M900 0V300M1050 0V300"></path>
+  </g>
+
+  <g transform="translate(855 62)" fill="none" stroke="url(#accent)" stroke-width="4">
+    <path d="M65 78L145 35L225 78L225 165L145 208L65 165Z" opacity=".8"></path>
+    <path d="M65 78L145 122L225 78M145 122V208" opacity=".65"></path>
+    <path d="M145 35V122" opacity=".5"></path>
+    <circle cx="65" cy="78" r="9" fill="#38BDF8"></circle>
+    <circle cx="145" cy="35" r="9" fill="#818CF8"></circle>
+    <circle cx="225" cy="78" r="9" fill="#C084FC"></circle>
+    <circle cx="225" cy="165" r="9" fill="#818CF8"></circle>
+    <circle cx="145" cy="208" r="9" fill="#38BDF8"></circle>
+    <circle cx="65" cy="165" r="9" fill="#818CF8"></circle>
+    <path d="M110 95L89 122L110 149M180 95L201 122L180 149" stroke="#E0E7FF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"></path>
+  </g>
+
+  <rect x="72" y="65" width="123" height="28" rx="14" fill="#172D4A" stroke="#38BDF8" stroke-opacity=".5"></rect>
+  <text x="133" y="84" fill="#7DD3FC" font-family="Arial,sans-serif" font-size="12" font-weight="700" text-anchor="middle" letter-spacing="2">OPEN SOURCE</text>
+
+  <text x="68" y="160" fill="#F8FAFC" font-family="Arial,sans-serif" font-size="58" font-weight="800" letter-spacing="-2">Build Better.</text>
+  <text x="68" y="222" fill="url(#accent)" font-family="Arial,sans-serif" font-size="54" font-weight="800" letter-spacing="-2">Contribute to PhishLens.</text>
+  <text x="72" y="258" fill="#94A3B8" font-family="Arial,sans-serif" font-size="17">Every improvement makes the web a little easier to understand.</text>
+
+  <path d="M72 278H1128" stroke="url(#accent)" stroke-width="2" opacity=".7"></path>
+</svg>
