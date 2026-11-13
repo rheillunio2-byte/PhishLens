@@ -1,94 +1,146 @@
-<div align="center">
+ <div align="center">
 
-<img src="assets/readme/banner-contributing.svg" alt="Contributing to PhishLens" width="100%">
+<img src="images/banner-contributing.svg" alt="Contributing to PhishLens" width="100%">
 
 </div>
 
-Thanks for helping improve PhishLens. This guide covers setup, how to add or change a detection rule, and what a good pull request looks like.
+Thank you for helping improve PhishLens! This guide explains how to set up the project, contribute detection rules, and submit quality pull requests.
 
-## 🧭 Ground rules
+## 🧭 Ground Rules
 
-1. **Stay local.** Submitted URLs must never be opened, fetched or transmitted. Do not add `fetch`, `XMLHttpRequest`, beacons or third-party scripts. The CSP enforces this.
-2. **Stay honest.** No fabricated intelligence. Heuristics are not a malware or reputation scan, and the UI must never imply they are.
-3. **Stay explainable.** Every signal needs a title, a weight and a plain-language reason.
-4. **Stay light.** No frameworks or build systems. It must run from `index.html` or a static server.
+1. **Stay local.** Submitted URLs must never be opened, fetched, or transmitted. Do not introduce `fetch`, `XMLHttpRequest`, tracking beacons, or third-party scripts.
+2. **Stay honest.** Heuristic analysis is not a malware scan or reputation check. The interface must never imply otherwise.
+3. **Stay explainable.** Every detection signal must include a title, weight, and understandable explanation.
+4. **Stay lightweight.** Avoid frameworks and build systems. The project must remain runnable through `index.html` or a static server.
 
 ## 🛠️ Setup
 
 ```bash
-git clone https://github.com/<your-username>/PhishLens.git
+git clone https://github.com/rheillunio2-byte/PhishLens.git
 cd PhishLens
-python -m http.server 8000   # or use VS Code Live Server
+python -m http.server 8000
 ```
 
-No install step is needed.
+Alternatively, use the VS Code Live Server extension.
 
-## 🌿 Workflow
+No package installation or build step is required.
 
-1. Fork the repo and create a branch: `git checkout -b feat/short-description`
-2. Make focused changes. One idea per pull request.
-3. Test manually (checklist below).
-4. Open a pull request describing what changed and why. Add screenshots for UI changes.
+## 🌿 Contribution Workflow
 
-Commit messages follow a simple convention: `feat:`, `fix:`, `docs:`, `style:`, `refactor:`, for example `feat: flag excessive path depth`.
+1. Fork the repository.
+2. Create a dedicated branch:
 
-## 🧩 Adding a detection rule
+   ```bash
+   git checkout -b feat/short-description
+   ```
 
-Three places change, all in `app.js`:
+3. Make focused changes. Keep each pull request centered on one improvement.
+4. Test your changes using the checklist below.
+5. Commit and push your branch:
 
-1. **Weight:** add a key to the `weights` object.
-2. **Logic:** add a check in `analyze()` using `add(key, title, reason)`.
-3. **Label:** add a short name to `RULE_LABELS` so the Methodology table lists it.
+   ```bash
+   git add .
+   git commit -m "feat: describe your improvement"
+   git push origin feat/short-description
+   ```
 
-```js
-// 1. weights
-const weights = { /* ... */ manyParams: 5 };
+6. Open a pull request describing what changed, why it matters, and how it was tested. Include screenshots for visual changes.
 
-// 2. inside analyze()
-if ([...url.searchParams].length > 12)
-  add("manyParams", "Many query parameters",
-      "The URL carries an unusually large number of parameters, which can hide tracking or redirect targets.");
+### Commit Message Convention
 
-// 3. RULE_LABELS
-const RULE_LABELS = { /* ... */ manyParams: "Many query parameters" };
+Use these prefixes:
+
+- `feat:` New functionality
+- `fix:` Bug fixes
+- `docs:` Documentation updates
+- `style:` Visual or formatting changes
+- `refactor:` Code restructuring without behavior changes
+
+Example: `feat: flag excessive URL path depth`
+
+## 🧩 Adding a Detection Rule
+
+Detection rules are managed in `app.js`. A new rule generally requires three updates:
+
+1. **Weight:** Add a key and numerical weight to the `weights` object.
+2. **Logic:** Add a condition inside `analyze()` and call `add(key, title, reason)`.
+3. **Label:** Add a readable name to `RULE_LABELS` so the Methodology page can display it.
+
+Example pattern (adapt it to the existing implementation):
+
+```javascript
+// 1. Add a weight
+const weights = {
+  // Existing rules...
+  manyParams: 5
+};
+
+// 2. Add logic inside analyze()
+if ([...url.searchParams].length > 12) {
+  add(
+    "manyParams",
+    "Many query parameters",
+    "The URL contains an unusually large number of parameters, which may obscure tracking or redirect information."
+  );
+}
+
+// 3. Add a label
+const RULE_LABELS = {
+  // Existing labels...
+  manyParams: "Many query parameters"
+};
 ```
 
-Also keep in mind:
+**Before submitting a new rule:**
 
-- Explain **why** the pattern matters and that it is not proof of malice.
-- Severity is derived from weight (18+ high, 10+ medium, otherwise low), so choose weights accordingly.
-- Changing existing weights or score bands needs justification in the PR, and the README table must be updated.
-- Document false-positive risks.
+- Explain why the pattern may be suspicious without claiming it proves malicious intent.
+- Severity is derived from the rule weight: 18+ is high, 10+ is medium, and lower weights are low.
+- Justify changes to existing weights or score classifications in your pull request.
+- Update the README if scoring bands or detection behavior change.
+- Document possible false positives.
 
-## 🎨 Design guidelines
+## 🎨 Design Guidelines
 
-- Use the existing CSS variables in `:root` (midnight navy surfaces, cyan/indigo accents, green/amber/red for risk only).
-- Every animation must be disabled under `prefers-reduced-motion`.
-- Keep layouts responsive down to 360px with no horizontal scroll.
-- Keep visible focus states, semantic HTML and accessible labels on SVGs.
-- New SVGs: clean vector paths, a proper `viewBox`, a `<title>`, no embedded raster images.
+- Follow the existing CSS variables in `:root`.
+- Maintain the midnight-navy theme with cyan and indigo accents.
+- Reserve green, amber, and red primarily for risk indicators.
+- Respect `prefers-reduced-motion` for all animations.
+- Support responsive layouts down to 360px without horizontal overflow.
+- Maintain visible focus states, semantic HTML, and accessible labels.
+- New SVGs should use clean vector paths, a valid `viewBox`, an appropriate `<title>`, and no embedded raster images.
 
-## ✅ Pull request checklist
+## ✅ Pull Request Checklist
 
-- [ ] Analyze works for the sample URLs and for invalid input (inline error appears)
-- [ ] Score and signals match the weights; no duplicate history entries when reopening reports
-- [ ] History saves, reopens and clears; export downloads a `.txt` report
-- [ ] Navigation works on desktop and mobile; keyboard-only use works
-- [ ] No console errors and no network requests to external hosts for analysis
-- [ ] Reduced motion tested; no horizontal overflow at mobile width
-- [ ] README or docs updated if behaviour changed
+- [ ] URL analysis works with sample URLs and invalid input.
+- [ ] Scores and signals match their configured weights.
+- [ ] Reopening reports does not create duplicate history entries.
+- [ ] History can be saved, reopened, and cleared.
+- [ ] Text report export works.
+- [ ] Navigation works on desktop and mobile.
+- [ ] Keyboard-only navigation works.
+- [ ] No console errors are introduced.
+- [ ] No outbound requests are introduced during URL analysis.
+- [ ] Reduced-motion preferences are respected.
+- [ ] No horizontal overflow appears on mobile.
+- [ ] Documentation is updated when behavior changes.
 
-## 🐞 Reporting issues
+## 🐞 Reporting Issues
 
-Include the URL pattern (use `example.com` style placeholders, never real victim links), the score you expected, the score you got, browser and OS, and a screenshot if it is visual.
+When reporting a bug, include:
+
+- A description of the issue.
+- The URL pattern using safe placeholders such as `example.com`, never real victim links.
+- The expected and actual results.
+- Your browser and operating system.
+- A screenshot when the issue involves the interface.
 
 ## 🔐 Security
 
-If you find a vulnerability (for example an XSS path in rendering), please report it privately to the maintainer instead of opening a public issue.
+If you discover a security vulnerability, such as a possible XSS issue in report rendering, please contact the repository maintainer privately rather than publishing exploit details in a public issue.
 
 <div align="center">
 
-<img src="assets/readme/divider.svg" alt="" width="100%">
+<img src="images/divider.svg" alt="" width="100%">
 
 *Thank you for making links easier to understand.* 🔍
 
