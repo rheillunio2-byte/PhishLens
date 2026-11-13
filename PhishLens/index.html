@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#080D18">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="description" content="PhishLens — explainable, local-only URL risk inspection.">
+<title>PhishLens — See Beyond the Link</title>
+<link rel="icon" href="assets/logo/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="bg" aria-hidden="true"></div>
+<header class="topbar">
+  <a class="brand" href="#inspect" aria-label="PhishLens home"><img src="assets/logo/phishlens-logo.svg" alt="PhishLens" height="34"></a>
+  <nav class="nav" id="nav" aria-label="Main">
+    <span class="ind" aria-hidden="true"></span>
+    <button class="nav-link active" data-view="inspect">Inspect</button>
+    <button class="nav-link" data-view="history">History <i id="history-count">0</i></button>
+    <button class="nav-link" data-view="method">Methodology</button>
+  </nav>
+  <div class="status"><span class="dot"></span>Local analysis</div>
+  <button class="menu" id="mobile-menu" aria-label="Toggle navigation" aria-expanded="false" aria-controls="nav"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+</header>
+
+<main>
+<section class="view active" id="view-inspect">
+  <div class="hero">
+    <div class="hero-text">
+      <h1><span>See Beyond</span><span class="grad">the Link.</span></h1>
+      <p>Uncover suspicious URL patterns, understand hidden warning signs, and make smarter decisions before you click.</p>
+    </div>
+    <img class="hero-art" src="assets/illustrations/hero-scanner.svg" alt="A lens scanning a suspicious link in front of a shield" width="480" height="400">
+  </div>
+
+  <section class="scanner" id="scanner" aria-labelledby="scan-title">
+    <div class="scan-head"><h2 id="scan-title">Inspect a URL</h2><span class="chip ok"><span class="dot"></span>Engine ready</span></div>
+    <form id="scan-form" novalidate>
+      <label for="url-input" class="sr">URL to inspect</label>
+      <div class="input-wrap" id="input-wrap">
+        <input id="url-input" type="text" placeholder="https://example.com/sign-in" autocomplete="off" spellcheck="false" aria-describedby="input-msg">
+        <button class="btn" type="submit" id="scan-btn">Analyze</button>
+        <span class="beam" aria-hidden="true"></span>
+      </div>
+      <p class="input-msg" id="input-msg" role="status">Analysis runs locally. No page is opened, fetched or contacted.</p>
+    </form>
+    <div class="samples"><span>Try a sample</span>
+      <button class="sample" data-url="https://www.wikipedia.org/">wikipedia.org</button>
+      <button class="sample" data-url="http://paypal.account-verify.example.com/login">lookalike sign-in</button>
+      <button class="sample" data-url="https://bit.ly/3example">short link</button>
+      <button class="sample" data-url="http://203.0.113.45:8080/verify-account">IP + port</button>
+    </div>
+  </section>
+
+  <section class="progress hidden" id="scan-progress" aria-live="polite">
+    <div class="tokens mono" id="tokens" aria-hidden="true"></div>
+    <div class="track"><span id="progress-bar"></span></div>
+    <ol class="steps"><li id="step-1">Parse URL</li><li id="step-2">Inspect host</li><li id="step-3">Evaluate signals</li><li id="step-4">Calculate score <b id="progress-percent" class="mono">0%</b></li></ol>
+  </section>
+
+  <section class="results hidden" id="results" aria-labelledby="report-title">
+    <div class="report-head">
+      <div><h2 id="report-title">Investigation report <span class="chip mono" id="report-id">PL-0000</span></h2><p class="mono muted" id="report-url">—</p><p class="muted small" id="report-date"></p></div>
+      <div class="actions"><button class="btn ghost" id="new-scan">New inspection</button><button class="btn" id="export-report">Export report</button></div>
+    </div>
+    <div class="grid">
+      <article class="card verdict" id="verdict-card">
+        <h3>Risk assessment</h3>
+        <div class="gauge-wrap"><svg class="gauge" viewBox="0 0 220 125" aria-hidden="true"><path class="gauge-bg" d="M20 110A90 90 0 0 1 200 110"/><path class="gauge-value" id="gauge-value" d="M20 110A90 90 0 0 1 200 110"/></svg>
+          <div class="gauge-number"><strong id="score">0</strong><small>/ 100</small></div></div>
+        <div class="verdict-pill" id="verdict">Awaiting scan</div>
+        <p id="verdict-copy">Run an inspection to see the risk assessment.</p>
+        <p class="muted small">Confidence: heuristic, explainable</p>
+      </article>
+      <article class="card profile">
+        <h3>Destination profile</h3>
+        <dl class="stats">
+          <div><dt>Hostname</dt><dd id="host-value" class="mono">—</dd></div>
+          <div><dt>Protocol</dt><dd id="protocol" class="mono">—</dd></div>
+          <div><dt>Top-level domain</dt><dd id="tld-value" class="mono">—</dd></div>
+          <div><dt>Subdomain depth</dt><dd id="sub-value" class="mono">—</dd></div>
+          <div><dt>URL length</dt><dd id="length-value" class="mono">—</dd></div>
+          <div><dt>HTTPS</dt><dd id="https-value" class="mono">—</dd></div>
+        </dl>
+        <div class="compose" id="compose" aria-label="Score composition"></div>
+        <p class="muted small" id="domain-name"></p>
+      </article>
+    </div>
+    <div class="sig-head"><h3>Signal breakdown</h3><span class="chip" id="signal-count">0 signals</span></div>
+    <p class="muted" id="signal-summary">No notable signals</p>
+    <div class="signals" id="signal-list"></div>
+    <div class="note"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.01"/></svg><p><strong>Read this carefully.</strong> A low score does not guarantee safety, and a high score is not proof of malicious intent. PhishLens uses client-side indicators, not a live reputation database.</p></div>
+  </section>
+</section>
+
+<section class="view" id="view-history">
+  <div class="page-head"><h1>Investigation archive</h1><p>Stored in this browser only. Nothing is uploaded.</p></div>
+  <div class="hist-bar"><div class="hist-stats" id="hist-stats"></div><button id="clear-history" class="btn ghost danger">Clear history</button></div>
+  <div class="hist-list" id="history-list"></div>
+</section>
+
+<section class="view" id="view-method">
+  <div class="page-head"><h1>How PhishLens thinks</h1><p>Every signal is visible, explainable and deliberately limited.</p></div>
+  <ol class="flow">
+    <li><b>01</b><h3>Parse URL</h3><p>The text is normalized and split into protocol, hostname, port, path and query.</p></li>
+    <li><b>02</b><h3>Examine structural signals</h3><p>Local rules look for user-info tricks, raw IPs, punycode, shorteners, lookalike wording and more.</p></li>
+    <li><b>03</b><h3>Calculate risk score</h3><p>Each triggered rule adds its weight. The total is capped at 100.</p></li>
+    <li><b>04</b><h3>Explain findings</h3><p>Every signal shows why it matters. The score prioritizes attention; it is not a verdict.</p></li>
+  </ol>
+  <div class="grid two">
+    <article class="card"><h3>Scoring</h3>
+      <div class="bands"><span class="b safe">0–11 Few flags</span><span class="b low">12–29 Low concern</span><span class="b medium">30–59 Caution</span><span class="b high">60–100 High risk</span></div>
+      <div class="rules" id="rules"></div></article>
+    <div class="stack">
+      <article class="card"><h3>Limitations</h3><ul class="list"><li>Does not visit the site or follow redirects.</li><li>Does not query DNS, WHOIS, certificates or threat feeds.</li><li>Does not inspect page content, scripts or forms.</li><li>Cannot confirm who owns a domain.</li></ul><p class="muted small">These checks need a hardened backend with SSRF protections.</p></article>
+      <article class="card"><h3>Privacy</h3><ul class="list"><li>Submitted URLs never leave your browser; a content-security policy blocks outbound requests.</li><li>History lives in localStorage and can be cleared at any time.</li></ul></article>
+    </div>
+  </div>
+</section>
+</main>
+<footer class="foot">© 2026 PhishLens · Built for curiosity, designed for caution.</footer>
+
+<dialog id="confirm"><form method="dialog"><h3>Clear history?</h3><p>All locally saved investigations will be removed.</p><div class="actions"><button class="btn ghost" value="no">Cancel</button><button class="btn danger" value="yes">Clear history</button></div></form></dialog>
+<script src="app.js"></script>
+</body>
+</html>
