@@ -1,0 +1,2 @@
+{ "name": "phishlens", "version": "2.0.0", "private": true, "description": "Explainable, local-only URL inspection workbench",
+  "scripts": { "test": "node --test PhishLens/tests/engine.test.js", "start": "python3 -m http.server 8000 --directory PhishLens" }, "license": "MIT" }

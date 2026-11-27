@@ -3,55 +3,20 @@ const $$ = (s, root=document) => [...root.querySelectorAll(s)];
 const STORAGE_KEY = "phishlens.history.v1";
 let latestReport = null;
 
-function getHistory(){ try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]")}catch{return[]} }
-function saveHistory(items){localStorage.setItem(STORAGE_KEY,JSON.stringify(items.slice(0,30)));updateHistoryCount()}
+function getHistory(){ try{const a=JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]");return Array.isArray(a)?a.slice(0,100).map(sanitizeRecord).filter(Boolean):[]}catch{return[]} }
+const toStored=r=>{const{raw,...rest}=r;return{...rest,normalized:r.safeUrl||redact(r.normalized)}};
+function saveHistory(items){localStorage.setItem(STORAGE_KEY,JSON.stringify(items.slice(0,100).map(toStored)));updateHistoryCount()}
+const picked=new Set();
+function toast(m){const t=$("#toast");t.textContent=m;clearTimeout(toast.t);toast.t=setTimeout(()=>t.textContent="",2500)}
 function updateHistoryCount(){$("#history-count").textContent=getHistory().length}
-const weights = {
-  rawIp:18, punycode:22, unicode:12, userInfo:22, shortener:10, brandBait:18,
-  credential:10, urgency:7, oddPort:9, deepSubdomain:7, longHost:6, hyphens:5,
-  riskyTld:8, doubleExtension:10, encoded:4, longUrl:4, http:4
-};
-function analyze(raw){
-  let input=raw.trim();
-  if(!/^[a-zA-Z][a-zA-Z\d+.-]*:\/\//.test(input)) input="https://"+input;
-  let url;
-  try{url=new URL(input)}catch{throw new Error("That address could not be parsed. Check for missing characters or spaces and try again.")}
-  if(!["http:","https:"].includes(url.protocol)) throw new Error("Only HTTP and HTTPS addresses can be inspected.");
-  const host=url.hostname.toLowerCase(), path=(url.pathname+" "+url.search).toLowerCase(), full=url.href.toLowerCase();
-  const parts=host.split(".").filter(Boolean), tld=parts.at(-1)||"—", subdomains=Math.max(0,parts.length-2);
-  const signals=[];
-  const add=(key,title,reason)=>signals.push({key,title,reason,weight:weights[key]||0});
-  if(/^(\d{1,3}\.){3}\d{1,3}$/.test(host))add("rawIp","Direct IP address","The destination uses an IPv4 address instead of a recognizable domain name. This can be legitimate, but it removes a familiar domain identity cue.");
-  if(host.includes("xn--"))add("punycode","Punycode hostname","The hostname contains an IDN-encoded label. Homograph attacks can use visually similar characters to imitate trusted domains.");
-  if(/[^\x00-\x7F]/.test(host))add("unicode","Non-ASCII hostname","The hostname contains non-ASCII characters. Some internationalized domains can resemble familiar Latin-script brands.");
-  if(url.username||url.password)add("userInfo","Credentials embedded before host","The URL includes user-info before the @ symbol. Attackers can exploit this to make a misleading brand-like string appear in the address.");
-  const shorteners=["bit.ly","tinyurl.com","t.co","is.gd","cutt.ly","rebrand.ly","shorturl.at","ow.ly","buff.ly","rb.gy"];
-  if(shorteners.some(d=>host===d||host.endsWith("."+d)))add("shortener","URL shortener","The address uses a known shortening service, so the final destination is obscured until expanded.");
-  const brands=["paypal","microsoft","apple","google","amazon","netflix","facebook","instagram","bank","steam","discord"];
-  const brandWords=brands.filter(b=>host.includes(b));
-  if(brandWords.length && !brandWords.some(b=>host===b+".com"||host.endsWith("."+b+".com")||host===b+".net"))add("brandBait","Brand-like wording in hostname",`The hostname contains "${brandWords[0]}" but is not an obvious canonical ${brandWords[0]} domain. Treat brand references in unrelated domains with caution.`);
-  if(/(login|signin|verify|account|password|secure|wallet|auth|update)/.test(path+" "+host))add("credential","Account or credential language","The URL includes sign-in, verification, password, or account-related wording. This is common on legitimate sites too, but is frequently used in credential lures.");
-  if(/(urgent|immediately|suspend|limited-time|expire|locked|action-required)/.test(full))add("urgency","Urgency or pressure wording","The address contains language designed to create urgency or fear of account loss.");
-  if(url.port && !["80","443"].includes(url.port))add("oddPort","Unusual destination port",`The URL specifies port ${url.port}, which is less common for ordinary public websites.`);
-  if(subdomains>=3)add("deepSubdomain","Deep subdomain chain",`The hostname has ${subdomains} subdomain levels. Long chains can bury the actual registered domain and imitate a trusted name.`);
-  if(host.length>45)add("longHost","Unusually long hostname",`The hostname is ${host.length} characters long, making it harder to read and verify at a glance.`);
-  if((host.match(/-/g)||[]).length>=3)add("hyphens","Hyphen-heavy hostname","Several hyphens appear in the hostname. This is not malicious by itself, but can be used to construct brand-like lookalikes.");
-  if(["zip","mov","top","click","country","gq","tk","work"].includes(tld))add("riskyTld","TLD often seen in abuse reports",`The .${tld} top-level domain has appeared in abuse patterns. TLD choice alone cannot establish maliciousness.`);
-  if(/\.(?:pdf|doc|docx|jpg|png|zip|exe)\.(?:php|html?|asp)$/i.test(url.pathname))add("doubleExtension","Double file extension","The path resembles a file with a second executable or web extension, a pattern sometimes used to disguise downloads.");
-  if(/%[0-9a-f]{2}/i.test(full))add("encoded","Percent-encoded characters","The URL contains encoded characters. Encoding is normal on the web, but can make a destination harder to read.");
-  if(url.href.length>120)add("longUrl","Long URL","The complete address is unusually long. Long query strings and paths can conceal tracking or confusing parameters.");
-  if(url.protocol==="http:")add("http","Unencrypted HTTP","The URL uses HTTP rather than HTTPS. Data exchanged with the site may not be encrypted in transit.");
-  const score=Math.min(100,signals.reduce((sum,s)=>sum+s.weight,0));
-  const verdict=score>=60?"HIGH RISK":score>=30?"CAUTION":score>=12?"LOW CONCERN":"FEW FLAGS";
-  const risk=score>=60?"high":score>=30?"medium":score>=12?"low":"safe";
-  return {id:"PL-"+Math.random().toString(36).slice(2,7).toUpperCase(),raw:raw.trim(),normalized:url.href,host,protocol:url.protocol,tld,subdomains,length:url.href.length,score,verdict,risk,signals,date:new Date().toISOString()};
-}
+const { analyze, redact, bandOf, reportText, compare, csvCell, sanitizeRecord, WEIGHTS: weights } = PhishLensEngine;
 
 /* ---------- PhishLens UI layer (scoring logic above is unchanged from v1) ---------- */
-const RULE_LABELS={rawIp:"Direct IP address",punycode:"Punycode hostname",unicode:"Non-ASCII hostname",userInfo:"Credentials before host",shortener:"URL shortener",brandBait:"Brand-like wording",credential:"Credential language",urgency:"Urgency wording",oddPort:"Unusual port",deepSubdomain:"Deep subdomain chain",longHost:"Long hostname",hyphens:"Hyphen-heavy host",riskyTld:"Abuse-prone TLD",doubleExtension:"Double file extension",encoded:"Percent-encoding",longUrl:"Long URL",http:"Unencrypted HTTP"};
+const RULE_LABELS={rawIp:"Direct IP address",punycode:"Punycode hostname",unicode:"Non-ASCII hostname",userInfo:"Credentials before host",shortener:"URL shortener",brandBait:"Brand-like wording",credential:"Credential language",urgency:"Urgency wording",oddPort:"Unusual port",deepSubdomain:"Deep subdomain chain",longHost:"Long hostname",hyphens:"Hyphen-heavy host",riskyTld:"Abuse-prone TLD",doubleExtension:"Double file extension",encoded:"Percent-encoding",longUrl:"Long URL",http:"Unencrypted HTTP",typosquat:"Brand look-alike",brandPath:"Brand in path",redirectParam:"Embedded redirect",obfuscatedIp:"Obfuscated IP",mixedScript:"Mixed alphabets",idnBrand:"IDN brand imitation",domainInSubdomain:"Domain in subdomain",doubleEncoding:"Double encoding"};
 const reduceMotion=matchMedia("(prefers-reduced-motion: reduce)").matches;
 const sev=w=>w>=18?"high":w>=10?"medium":"low";
-const riskOf=s=>s>=60?"high":s>=30?"medium":s>=12?"low":"safe";
+const riskOf=s=>bandOf(s).risk;
+const css=k=>k==="critical"?"high":k;
 const title=s=>s.charAt(0)+s.slice(1).toLowerCase();
 let busy=false;
 
@@ -101,18 +66,23 @@ function runScan(raw){
 function showResults(){const r=$("#results");r.classList.remove("hidden");r.scrollIntoView({behavior:reduceMotion?"auto":"smooth",block:"start"})}
 
 function renderReport(r,save=true){
-  latestReport=r;const risk=r.risk||riskOf(r.score);
+  latestReport=r;const risk=css(r.risk||riskOf(r.score));
   $("#verdict-card").className="card verdict risk-"+risk;
   $("#report-id").textContent=r.id;$("#report-url").textContent=r.normalized;$("#report-date").textContent=new Date(r.date).toLocaleString();
   const g=$("#gauge-value");g.style.strokeDashoffset=283;requestAnimationFrame(()=>requestAnimationFrame(()=>{g.style.strokeDashoffset=283-283*r.score/100}));
-  countUp($("#score"),r.score);$("#verdict").textContent=title(r.verdict);
-  $("#verdict-copy").textContent=r.score>=60?"Multiple strong warning signs were detected. Avoid entering credentials or downloading files from this destination.":r.score>=30?"Several indicators deserve a closer look. Verify the domain independently before sharing information.":r.score>=12?"A few cautionary patterns were detected. Check the exact hostname and context before proceeding.":"No major patterns from this rule set were detected. This is not proof that the destination is safe.";
+  countUp($("#score"),r.score);$("#verdict").textContent=r.verdict.charAt(0)+r.verdict.slice(1).toLowerCase();
+  $("#verdict-copy").textContent=r.score>=80?"Critical: several strong warning signs were found. Do not enter credentials or open files from this destination.":r.score>=60?"Multiple strong warning signs were detected. Avoid entering credentials or downloading files from this destination.":r.score>=30?"Several indicators deserve a closer look. Verify the domain independently before sharing information.":r.score>=12?"A few cautionary patterns were detected. Check the exact hostname and context before proceeding.":"No suspicious indicators detected in the checks performed. This is not proof that the destination is safe.";
   $("#host-value").textContent=r.host;$("#protocol").textContent=r.protocol.replace(":","").toUpperCase();$("#tld-value").textContent="."+r.tld;$("#sub-value").textContent=r.subdomains;$("#length-value").textContent=r.length+" chars";$("#https-value").textContent=r.protocol==="https:"?"Yes":"No";
-  $("#domain-name").textContent=r.signals.length?"Score composition: each segment is one triggered rule.":"No rules contributed to the score.";
-  $("#compose").innerHTML=r.signals.map(s=>`<i class="sev-${sev(s.weight)}" style="flex:${s.weight}" title="${escapeHtml(s.title)} +${s.weight}"></i>`).join("");
+  $("#domain-name").textContent=(r.signals.length?"Score composition: each segment is one triggered rule. ":"No rules contributed to the score. ")+(r.checks?"Not checked: "+r.checks.notPerformed.join(", ")+".":"");
+  $("#compose").innerHTML=r.signals.map(s=>`<i class="sev-${sev(s.weight)}" style="flex:${s.contribution??s.weight}" title="${escapeHtml(s.title)} +${s.contribution??s.weight}"></i>`).join("");
   $("#signal-count").textContent=`${r.signals.length} signal${r.signals.length===1?"":"s"}`;
   $("#signal-summary").textContent=r.signals.length?`${r.signals.length} indicator${r.signals.length===1?"":"s"} worth reviewing. Each one explains why it matters.`:"No notable patterns detected";
-  $("#signal-list").innerHTML=r.signals.length?r.signals.map((s,i)=>`<article class="sig sev-${sev(s.weight)}" style="--i:${i}"><div class="sig-top"><strong>${escapeHtml(s.title)}</strong><span class="w">+${s.weight}</span></div><span class="sev">${sev(s.weight)} severity</span><p>${escapeHtml(s.reason)}</p><div class="sig-bar"><i style="width:${Math.round(s.weight/22*100)}%"></i></div></article>`).join(""):`<div class="empty-sig">No rules were triggered. Remember: unknown threats may not match these patterns.</div>`;
+  const ordered=[...r.signals].sort((a,b)=>(a.category||"").localeCompare(b.category||"")||b.contribution-a.contribution);
+  $("#signal-list").innerHTML=r.signals.length?ordered.map((s,i)=>`<article class="sig sev-${sev(s.weight)}" style="--i:${i}"><div class="sig-top"><strong>${escapeHtml(s.title)}</strong><span class="w">+${s.contribution??s.weight}</span></div><span class="sev">${sev(s.weight)} severity · heuristic</span><p>${escapeHtml(s.reason)}</p>${s.evidence?`<p class="mono small">Evidence: ${escapeHtml(s.evidence)}</p>`:""}${s.action?`<p class="small"><b>Suggested action:</b> ${escapeHtml(s.action)}</p>`:""}<div class="sig-bar"><i style="width:${Math.round(s.weight/22*100)}%"></i></div></article>`).join(""):`<div class="empty-sig">No rules were triggered. Remember: unknown threats may not match these patterns.</div>`;
+  let last="";$$("#signal-list .sig").forEach((el,i)=>{const c=ordered[i].category||"Structure";if(c!==last){el.insertAdjacentHTML("beforebegin",`<h4 class="cat">${escapeHtml(c)}</h4>`);last=c}});
+  if(r.decodedHost&&r.decodedHost!==r.host)$("#host-value").textContent=r.host+" (decoded: "+r.decodedHost+")";
+  const hb=r.hostBreakdown,li=a=>(a&&a.length?a.map(x=>`<li>${escapeHtml(x)}</li>`).join(""):"<li>None</li>");
+  $("#report-extras").innerHTML=`<h3>Next steps</h3><ul class="list">${li(r.recommendations)}</ul>`+(hb?`<h3>Hostname breakdown</h3><dl class="kv"><div><dt>Subdomain</dt><dd class="mono">${escapeHtml(hb.subdomain||"—")}</dd></div><div><dt>Registered domain</dt><dd class="mono">${escapeHtml(hb.registrable)}</dd></div><div><dt>TLD</dt><dd class="mono">.${escapeHtml(hb.tld)}</dd></div><div><dt>Port</dt><dd class="mono">${escapeHtml(hb.port||"default")}</dd></div></dl>`:"")+(r.checks?`<h3>Checks</h3><p class="small"><b>Performed:</b></p><ul class="list">${li(r.checks.performed)}</ul><p class="small"><b>Not applicable to this URL:</b></p><ul class="list">${li(r.checks.notApplicable)}</ul><p class="small"><b>Unavailable:</b></p><ul class="list">${li(r.checks.unavailable)}</ul><p class="small"><b>Not performed (local-only by design):</b></p><ul class="list">${li(r.checks.notPerformed)}</ul>`:"");
   if(save){const h=getHistory();h.unshift(r);saveHistory(h)}
 }
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
@@ -121,24 +91,43 @@ $$(".sample").forEach(b=>b.addEventListener("click",()=>{$("#url-input").value=b
 $("#new-scan").addEventListener("click",()=>{$("#scanner").scrollIntoView({behavior:"smooth"});$("#url-input").select()});
 
 function renderHistory(){
-  const items=getHistory(),flagged=items.filter(r=>r.score>=30).length;
+  const all=getHistory(),q=($("#hist-search").value||"").trim().toLowerCase(),f=$("#hist-filter").value;
+  const items=all.filter(r=>(!q||(r.host+" "+r.normalized).toLowerCase().includes(q))&&(!f||(r.risk||riskOf(r.score))===f));
+  const SORTS={new:(a,b)=>Date.parse(b.date)-Date.parse(a.date),old:(a,b)=>Date.parse(a.date)-Date.parse(b.date),hi:(a,b)=>b.score-a.score,lo:(a,b)=>a.score-b.score};items.sort(SORTS[$("#hist-sort").value]||SORTS.new);
+  const flagged=items.filter(r=>r.score>=30).length;
   $("#hist-stats").innerHTML=`<span class="chip">${items.length} investigation${items.length===1?"":"s"}</span><span class="chip">${flagged} flagged</span>`;
-  $("#clear-history").hidden=!items.length;
+  $("#clear-history").hidden=!all.length;$("#export-csv").hidden=!all.length;
   const host=$("#history-list");
   if(!items.length){host.innerHTML=`<div class="empty"><img src="assets/illustrations/empty-history.svg" alt="" width="220" height="165"><h3>No investigations yet</h3><p>URLs you inspect will appear here.</p><button class="btn" id="go-inspect">Start an inspection</button></div>`;$("#go-inspect").addEventListener("click",()=>switchView("inspect"));return}
-  host.innerHTML=items.map((r,i)=>`<div class="entry risk-${r.risk||riskOf(r.score)}"><div class="ring" style="--p:${r.score}"><b>${r.score}</b></div><div class="h"><strong>${escapeHtml(r.host)}</strong><small>${escapeHtml(r.normalized)}</small></div><span class="v">${title(r.verdict)}</span><span class="d">${new Date(r.date).toLocaleDateString()}<br>${new Date(r.date).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span><button class="btn ghost" data-index="${i}" aria-label="Open report for ${escapeHtml(r.host)}">View report</button></div>`).join("");
-  $$("[data-index]",host).forEach(b=>b.addEventListener("click",()=>{renderReport(items[Number(b.dataset.index)],false);switchView("inspect");showResults()}));
+  host.innerHTML=items.map(r=>{const k=css(r.risk||riskOf(r.score)),id=escapeHtml(r.id),d=new Date(r.date);return `<div class="entry risk-${k}"><label class="pick"><input type="checkbox" data-pick="${id}" ${picked.has(r.id)?"checked":""} aria-label="Select ${escapeHtml(r.host)} for comparison"></label><div class="ring" style="--p:${r.score}"><b>${r.score}</b></div><div class="h"><strong>${escapeHtml(r.host)}</strong><small>${escapeHtml(r.normalized)}</small></div><span class="v">${escapeHtml(r.verdict)}</span><span class="d">${d.toLocaleDateString()}<br>${d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span><button class="btn ghost" data-open="${id}" aria-label="Open report for ${escapeHtml(r.host)}">View report</button><button class="btn ghost danger" data-del="${id}" aria-label="Delete ${escapeHtml(r.host)} from history">Delete</button></div>`}).join("");
+  $$("[data-open]",host).forEach(b=>b.addEventListener("click",()=>{const r=getHistory().find(x=>x.id===b.dataset.open);if(r){renderReport(r,false);switchView("inspect");showResults()}}));
+  $$("[data-del]",host).forEach(b=>b.addEventListener("click",()=>{picked.delete(b.dataset.del);saveHistory(getHistory().filter(x=>x.id!==b.dataset.del));renderHistory();toast("Entry deleted")}));
+  $$("[data-pick]",host).forEach(b=>b.addEventListener("change",()=>{if(b.checked){picked.add(b.dataset.pick);if(picked.size>2)picked.delete(picked.values().next().value)}else picked.delete(b.dataset.pick);renderHistory()}));
+  $("#compare-btn").disabled=picked.size!==2;$("#compare-btn").textContent=`Compare (${picked.size}/2)`;
 }
+["input","change"].forEach(ev=>{["#hist-search","#hist-filter","#hist-sort"].forEach(s=>$(s).addEventListener(ev,renderHistory))});
+$("#export-csv").addEventListener("click",()=>{const rows=[["date","host","url_redacted","score","risk","signals"],...getHistory().map(r=>[r.date,r.host,r.normalized,r.score,r.verdict,r.signals.map(s=>s.title).join("; ")])];
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([rows.map(x=>x.map(csvCell).join(",")).join("\n")],{type:"text/csv"}));a.download="phishlens-history.csv";a.click();URL.revokeObjectURL(a.href)});
 $("#clear-history").addEventListener("click",()=>$("#confirm").showModal());
 $("#confirm").addEventListener("close",e=>{if(e.target.returnValue==="yes"){saveHistory([]);renderHistory()}});
 
-$("#export-report").addEventListener("click",()=>{
-  if(!latestReport)return;const r=latestReport;
-  const lines=["PHISHLENS — URL INSPECTION REPORT","==================================",`Report: ${r.id}`,`Date: ${new Date(r.date).toLocaleString()}`,`Submitted URL: ${r.raw}`,`Normalized URL: ${r.normalized}`,`Risk score: ${r.score}/100`,`Assessment: ${r.verdict}`,"","SIGNALS","-------",...(r.signals.length?r.signals.map(s=>`[+${s.weight}] ${s.title}\n${s.reason}`):["No configured heuristic rules were triggered."]),"","LIMITATION","This report is based on local URL heuristics only. It is not a live reputation check and does not prove a URL is safe or malicious."];
-  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([lines.join("\n")],{type:"text/plain"}));a.download=`PhishLens-${r.id}.txt`;a.click();URL.revokeObjectURL(a.href);
-});
+$("#export-report").addEventListener("click",()=>{if(!latestReport)return;const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([reportText(latestReport)],{type:"text/plain"}));a.download=`PhishLens-${latestReport.id}.txt`;a.click();URL.revokeObjectURL(a.href)});
+$("#copy-report").addEventListener("click",async()=>{if(!latestReport)return;try{await navigator.clipboard.writeText(reportText(latestReport));toast("Redacted report copied")}catch{toast("Copy blocked by the browser; use Export instead")}});
+$("#print-report").addEventListener("click",()=>window.print());
+$("#compare-btn").addEventListener("click",()=>{const [a,b]=[...picked].map(id=>getHistory().find(x=>x.id===id));if(!a||!b)return;const c=compare(a,b),li=x=>x.length?x.map(t=>`<li>${escapeHtml(t)}</li>`).join(""):"<li>None</li>";
+  const col=(r,n)=>`<div class="cmp-col risk-${css(r.risk)}"><h4>${n}: ${escapeHtml(r.host)}</h4><p class="mono small">${escapeHtml(r.normalized)}</p><p><b>${r.score}</b>/100 · ${escapeHtml(r.verdict)}</p></div>`;
+  $("#compare-body").innerHTML=`<div class="cmp">${col(a,"A")}${col(b,"B")}</div><p>${c.higher==="equal"?"Both reports have the same score.":`Report ${c.higher.toUpperCase()} scores ${Math.abs(c.delta)} points higher. Scores are heuristic priorities, not probabilities.`}</p><h4>Only in A</h4><ul class="list">${li(c.onlyA)}</ul><h4>Only in B</h4><ul class="list">${li(c.onlyB)}</ul><h4>In both</h4><ul class="list">${li(c.shared)}</ul>`;$("#compare-dialog").showModal()});
+$$(".sample").forEach(b=>b.addEventListener("click",()=>{$("#sample-note").textContent="What this shows: "+(b.dataset.note||"")}));
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&$("#nav").classList.contains("open")){$("#nav").classList.remove("open");$("#mobile-menu").setAttribute("aria-expanded","false");$("#mobile-menu").focus()}});
 
 $("#rules").innerHTML=Object.entries(weights).sort((a,b)=>b[1]-a[1]).map(([k,w])=>`<div class="rule sev-${sev(w)}"><span>${RULE_LABELS[k]}</span><i style="--w:${Math.round(w/22*100)}%"></i><span>+${w}</span></div>`).join("");
 updateHistoryCount();
 switchView(location.hash.slice(1)||"inspect",false);
 document.fonts?.ready.then(moveIndicator);
+
+/* ---- v2.2 polish: tooltips, scanner focus state, button ripple ---- */
+(()=>{const tips={"Hostname":"The full host the link points to","Subdomain depth":"Labels before the registered domain","HTTPS":"Whether the connection would be encrypted","Top-level domain":"The final label of the hostname"};
+$$(".dest dt, #view-inspect dl dt").forEach(d=>{const t=tips[d.textContent.trim()];if(t){d.dataset.tip=t;d.tabIndex=0}});
+const w=$("#input-wrap");$("#url-input").addEventListener("focus",()=>w.classList.add("focus"));$("#url-input").addEventListener("blur",()=>w.classList.remove("focus"));
+document.addEventListener("pointerdown",e=>{const b=e.target.closest(".btn");if(!b||matchMedia("(prefers-reduced-motion:reduce)").matches)return;const r=b.getBoundingClientRect();b.style.setProperty("--rx",e.clientX-r.left+"px");b.style.setProperty("--ry",e.clientY-r.top+"px");b.classList.remove("rip");void b.offsetWidth;b.classList.add("rip")});
+const t=$("#toast");new MutationObserver(()=>t.classList.toggle("ok",/copied|deleted/i.test(t.textContent))).observe(t,{childList:true});})();
