@@ -145,3 +145,6 @@ If you discover a security vulnerability, such as a possible XSS issue in report
 *Thank you for making links easier to understand.* 🔍
 
 </div>
+
+## Detection engine changes
+Detection logic lives in `PhishLens/engine.js` (pure functions, no DOM, no network). Run `npm test` before opening a pull request. Every new rule needs a weight, a family (if it overlaps existing cues), evidence text, a recommended action, a positive test and a false-positive test. Never add network calls, runtime dependencies or code that stores URL credentials, queries or fragments.
