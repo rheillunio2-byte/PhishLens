@@ -1,7 +1,7 @@
 /* PhishLens analysis engine v2 — pure, passive, no network. Works in browsers (window.PhishLensEngine) and Node (require). */
 (function (root) {
   "use strict";
-  const WEIGHTS = { rawIp:18, obfuscatedIp:10, mixedScript:20, idnBrand:28, domainInSubdomain:16, doubleEncoding:8, punycode:22, unicode:12, userInfo:22, shortener:10, brandBait:18, typosquat:20, brandPath:8, redirectParam:8,
+  const WEIGHTS = { threatList:70, rawIp:18, obfuscatedIp:10, mixedScript:20, idnBrand:28, domainInSubdomain:16, doubleEncoding:8, punycode:22, unicode:12, userInfo:22, shortener:10, brandBait:18, typosquat:20, brandPath:8, redirectParam:8,
     credential:10, urgency:7, oddPort:9, deepSubdomain:7, longHost:6, hyphens:5, riskyTld:8, doubleExtension:10, encoded:4, longUrl:4, http:4 };
   // Signals in one family describe the same underlying cue; only the strongest counts in full, the rest at 50%.
   const FAMILY = { punycode:"idn", unicode:"idn", mixedScript:"idn", brandBait:"brand", typosquat:"brand", idnBrand:"brand", brandPath:"brand", credential:"lure", urgency:"lure", rawIp:"ip", obfuscatedIp:"ip", encoded:"enc", doubleEncoding:"enc" };
@@ -20,7 +20,7 @@
   const CONF = {"а":"a","е":"e","о":"o","р":"p","с":"c","у":"y","х":"x","і":"i","ј":"j","ѕ":"s","ԁ":"d","һ":"h","ɡ":"g","ӏ":"l","ο":"o","α":"a","ν":"v","ι":"i","ρ":"p","κ":"k","τ":"t","υ":"u","ѵ":"v","ɑ":"a","օ":"o","ս":"u"};
   const SCRIPTS = ["Latin","Cyrillic","Greek","Armenian","Hebrew","Arabic","Han","Hiragana","Katakana","Hangul","Thai","Devanagari"].map(n => [n === "Hiragana" || n === "Katakana" ? "Han" : n, new RegExp("\\p{Script=" + n + "}", "u")]);
   const COMMON_TLD = new Set(["com","net","org","gov","edu"]);
-  const CAT = { rawIp:"Identity", obfuscatedIp:"Identity", punycode:"Identity", unicode:"Identity", mixedScript:"Identity", idnBrand:"Identity", userInfo:"Identity", brandBait:"Identity", typosquat:"Identity", brandPath:"Identity", domainInSubdomain:"Identity",
+  const CAT = { threatList:"Threat intelligence", rawIp:"Identity", obfuscatedIp:"Identity", punycode:"Identity", unicode:"Identity", mixedScript:"Identity", idnBrand:"Identity", userInfo:"Identity", brandBait:"Identity", typosquat:"Identity", brandPath:"Identity", domainInSubdomain:"Identity",
     shortener:"Structure", oddPort:"Structure", deepSubdomain:"Structure", longHost:"Structure", hyphens:"Structure", riskyTld:"Structure", http:"Structure",
     redirectParam:"Redirect & encoding", encoded:"Redirect & encoding", doubleEncoding:"Redirect & encoding", longUrl:"Redirect & encoding", doubleExtension:"Redirect & encoding", credential:"Lure wording", urgency:"Lure wording" };
   const SHORTENERS = ["bit.ly","tinyurl.com","t.co","is.gd","cutt.ly","rebrand.ly","shorturl.at","ow.ly","buff.ly","rb.gy"];
@@ -71,13 +71,14 @@
     const score = Math.max(0, Math.min(100, Math.round(sc))), b = bandOf(score), str = (v, n) => String(v == null ? "" : v).slice(0, n), num = v => Math.max(0, Math.min(100, Number(v) || 0));
     const signals = (Array.isArray(o.signals) ? o.signals : []).slice(0, 40).filter(x => x && typeof x === "object" && typeof x.title === "string").map(x => ({
       key: str(x.key, 30), category: str(x.category, 30) || "Structure", title: str(x.title, 80), reason: str(x.reason, 400), evidence: str(x.evidence, 200), action: str(x.action, 300),
-      weight: num(x.weight), contribution: num(x.contribution != null ? x.contribution : x.weight), severity: ["low", "medium", "high"].includes(x.severity) ? x.severity : "low" }));
+      weight: num(x.weight), contribution: num(x.contribution != null ? x.contribution : x.weight), severity: ["low", "medium", "high"].includes(x.severity) ? x.severity : "low", source: x.source === "threat-list" ? "threat-list" : "heuristic" }));
     const red = typeof o.normalized === "string" ? redact(o.normalized) : "(unparseable)";
     const bd = o.hostBreakdown && typeof o.hostBreakdown === "object" ? o.hostBreakdown : {};
     return { id: /^[A-Za-z0-9-]{1,16}$/.test(String(o.id)) ? String(o.id) : "PL-" + Math.random().toString(36).slice(2, 7).toUpperCase(),
       host: str(o.host, 253), normalized: red === "(unparseable)" ? str(o.host, 253) : red, safeUrl: red === "(unparseable)" ? str(o.host, 253) : red,
       registrable: str(o.registrable || o.host, 253), protocol: str(o.protocol, 8), tld: str(o.tld, 30), subdomains: num(o.subdomains), length: Math.max(0, Number(o.length) || 0),
       score, risk: b.risk, verdict: b.label, signals, date: new Date(t).toISOString(), engine: str(o.engine, 8), decodedHost: str(o.decodedHost, 253),
+      threatMatch: o.threatMatch && typeof o.threatMatch === "object" ? { domain: str(o.threatMatch.domain, 253), category: str(o.threatMatch.category, 80), source: str(o.threatMatch.source, 200) } : null,
       hostBreakdown: { subdomain: str(bd.subdomain, 253), registrable: str(bd.registrable, 253), tld: str(bd.tld, 30), port: str(bd.port, 6) },
       recommendations: (Array.isArray(o.recommendations) ? o.recommendations : []).slice(0, 8).map(x => str(x, 300)),
       checks: o.checks && Array.isArray(o.checks.notPerformed) ? { performed: (o.checks.performed || []).slice(0, 12).map(x => str(x, 80)), notApplicable: (o.checks.notApplicable || []).slice(0, 12).map(x => str(x, 120)), unavailable: (o.checks.unavailable || []).slice(0, 12).map(x => str(x, 120)), notPerformed: o.checks.notPerformed.slice(0, 12).map(x => str(x, 80)) } : null };
@@ -91,7 +92,7 @@
     if (r.hostBreakdown) L.push("", `Host breakdown: subdomain=${r.hostBreakdown.subdomain || "—"} | registered domain=${r.hostBreakdown.registrable} | TLD=${r.hostBreakdown.tld} | port=${r.hostBreakdown.port || "default"}`);
     L.push("", "SIGNALS");
     if (!r.signals.length) L.push("No suspicious indicators detected in the checks performed.");
-    for (const s of r.signals) L.push(`[+${s.contribution != null ? s.contribution : s.weight}] ${s.title} (${s.severity} severity, heuristic)`, `   Why: ${s.reason}`, s.evidence ? `   Evidence: ${s.evidence}` : null, s.action ? `   Action: ${s.action}` : null);
+    for (const s of r.signals) L.push(`[+${s.contribution != null ? s.contribution : s.weight}] ${s.title} (${s.severity} severity, ${s.source === "threat-list" ? "threat list" : "heuristic"})`, `   Why: ${s.reason}`, s.evidence ? `   Evidence: ${s.evidence}` : null, s.action ? `   Action: ${s.action}` : null);
     if (r.recommendations && r.recommendations.length) L.push("", "RECOMMENDATIONS", ...r.recommendations.map(x => "- " + x));
     if (r.checks) L.push("", "CHECKS", `Performed: ${r.checks.performed.join("; ")}`, `Not applicable to this URL: ${(r.checks.notApplicable || []).join("; ") || "none"}`, `Unavailable: ${(r.checks.unavailable || []).join("; ") || "none"}`, `Not performed (local-only by design): ${r.checks.notPerformed.join("; ")}`);
     L.push("", "LIMITATIONS", "This tool never opens, fetches or contacts the URL. It scores structure only and cannot confirm a site is safe or malicious.");
@@ -104,6 +105,37 @@
     return { scoreA: a.score, scoreB: b.score, delta: b.score - a.score, higher: a.score === b.score ? "equal" : a.score > b.score ? "a" : "b",
       shared: [...ka.keys()].filter(k => kb.has(k)).map(k => ka.get(k).title), onlyA: [...ka.keys()].filter(k => !kb.has(k)).map(k => ka.get(k).title), onlyB: [...kb.keys()].filter(k => !ka.has(k)).map(k => kb.get(k).title) };
   }
+  // Local threat list: static, third-party-reported domains (built-in, with sources) plus lists the user imports. Never fetched live.
+  const SEED_THREATS = [{ domain: "aladel.net", category: "malware distribution and phishing reports", source: "Symantec 'dirtiest sites' list (via Help Net Security); flagged as phishing / high risk by MalwareTips and Gridinsoft URL checks" }];
+  const DOMAIN_RE = /^(?=.{3,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+  const cleanDomain = d => String(d == null ? "" : d).trim().toLowerCase().replace(/^[a-z][a-z0-9+.-]*:\/\//, "").replace(/[\/?#:].*$/, "").replace(/^\*?\./, "").replace(/\.$/, "");
+  const IPV4 = /^((25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(25[0-5]|2[0-4]\d|1?\d?\d)$/;
+  // Shared platforms are never imported as threats: feeds such as URLhaus list abused services (e.g. drive.google.com), and flagging a whole service would cause false alarms.
+  const SHARED = ["google.com", "github.com", "github.io", "githubusercontent.com", "gitlab.com", "dropbox.com", "dropboxusercontent.com", "sharepoint.com", "1drv.ms", "amazonaws.com", "cloudfront.net", "azurewebsites.net", "windows.net", "cloudflare.com", "pages.dev", "workers.dev", "netlify.app", "vercel.app", "herokuapp.com", "firebaseapp.com", "web.app", "appspot.com", "telegram.org", "t.me", "mega.nz", "pastebin.com", "wetransfer.com", "wikipedia.org", "youtube.com", "twitter.com", "x.com", "reddit.com", "medium.com", "wordpress.com", "blogspot.com", "sourceforge.net", "archive.org"];
+  const PROTECTED = new Set([...Object.values(BRANDS).flat(), ...SHARED]);
+  const isProtected = d => { const p = d.split("."); for (let i = 0; i < p.length - 1; i++) if (PROTECTED.has(p.slice(i).join("."))) return true; return false; };
+  let threatIdx = new Map();
+  function setThreatList(list) {
+    threatIdx = new Map();
+    for (const x of [...SEED_THREATS, ...(Array.isArray(list) ? list.slice(0, 20000) : [])]) {
+      const d = cleanDomain(x && x.domain); const builtin = SEED_THREATS.includes(x); if (!(DOMAIN_RE.test(d) || IPV4.test(d)) || threatIdx.has(d) || (!builtin && isProtected(d))) continue;
+      threatIdx.set(d, { domain: d, category: String(x.category || "reported by a list you imported").slice(0, 80), source: String(x.source || "your list").slice(0, 200), builtin });
+    }
+  }
+  function threatMatch(host) { const p = host.split("."); for (let i = 0; i < p.length - 1; i++) { const m = threatIdx.get(p.slice(i).join(".")); if (m) return m; } return null; }
+  /** Parses a pasted/imported list: plain domains, "domain, category", hosts files (0.0.0.0 domain), or URL lists/CSV rows (the first URL on a line). */
+  function parseThreatList(text, source) {
+    const out = [], seen = new Set();
+    for (const raw of String(text).split(/\r?\n/).slice(0, 200000)) {
+      const l = raw.trim(); if (!l || l[0] === "#" || l[0] === ";") continue;
+      let d, cat; const u = l.match(/https?:\/\/[^\s",;]+/i);
+      if (u) d = u[0]; else if (/^(127\.0\.0\.1|0\.0\.0\.0)\s/.test(l)) d = l.split(/\s+/)[1]; else { const p = l.split(/[,\t]/); d = p[0]; if (p.length > 1) cat = p.slice(1).map(s => s.trim()).join(", "); }
+      d = cleanDomain(d); if (!(DOMAIN_RE.test(d) || IPV4.test(d)) || seen.has(d)) continue; seen.add(d);
+      out.push({ domain: d, category: (cat || "reported in an imported list").slice(0, 80), source: String(source || "your list").slice(0, 200) });
+    }
+    return out;
+  }
+  setThreatList([]);
   function bandOf(score) { const b = BANDS.find(x => score >= x[0]); return { risk: b[1], label: b[2] }; }
 
   /** Strip credentials, query and fragment so history/exports never store secrets. */
@@ -213,6 +245,9 @@
       const ev = test(ctx);
       if (ev) hits.push({ key, title, reason, action, weight: WEIGHTS[key], evidence: String(ev === true ? "" : ev), source: "heuristic" });
     }
+    const tm = isIp ? (host[0] === "[" ? null : threatIdx.get(host) || null) : threatMatch(host);
+    if (tm) hits.push({ key: "threatList", title: "Listed in local threat list", reason: `This domain is in PhishLens' local threat list (${tm.category}). The list is a static snapshot of third-party reports, not a live feed, and does not prove the site is malicious today.`,
+      action: "Do not open it or enter any data. If you must investigate, use an isolated environment.", weight: WEIGHTS.threatList, evidence: `${tm.domain} — ${tm.source}`, source: "threat-list" });
     hits.sort((a, b) => b.weight - a.weight);
     for (const h of hits) h.category = CAT[h.key] || "Structure";
     const seen = {};
@@ -225,23 +260,23 @@
     const strong = [...new Set(hits.filter(s => s.weight >= 8).map(s => s.family))];
     if (strong.length >= 3) hits.push({ key: "corroboration", title: "Multiple independent indicators", reason: "Several unrelated cue types appear together, which is more telling than any one cue alone.", action: "Treat this link as untrusted until verified through an official channel.",
       weight: 10, contribution: 10, evidence: strong.length + " independent indicator types", source: "heuristic", family: "corroboration", category: "Structure", severity: "medium" });
-    const score = Math.min(100, hits.reduce((n, s) => n + s.contribution, 0));
+    const score = Math.max(tm ? 85 : 0, Math.min(100, hits.reduce((n, s) => n + s.contribution, 0)));  // a list match floors the score at 85
     const band = bandOf(score);
     return {
       id: "PL-" + Math.random().toString(36).slice(2, 7).toUpperCase(), raw: String(raw).trim(), normalized: url.href, safeUrl: redact(url.href),
       host, registrable: reg, protocol: url.protocol, tld, subdomains: sub, length: url.href.length, score, risk: band.risk, verdict: band.label,
-      signals: hits, engine: "2.1", decodedHost: ctx.decoded,
+      signals: hits, engine: "2.5", threatMatch: tm ? { domain: tm.domain, category: tm.category, source: tm.source } : null, decodedHost: ctx.decoded,
       hostBreakdown: { subdomain: subLabels.join("."), registrable: reg, tld, port: url.port },
       groups: hits.reduce((g, s) => ((g[s.category] = g[s.category] || []).push(s.key), g), {}),
       recommendations: (() => { const out = [...new Set(hits.filter(s => s.contribution > 0).slice(0, 3).map(s => s.action))];
         if (score >= 30) out.push("Do not open this link from an unsolicited message. Reach the service by typing its address or using its official app.", "If you already entered a password, change it immediately and enable multi-factor authentication.");
         else out.push("No strong structural warning signs, but verify unexpected links through a channel you trust."); return out; })(),
-      checks: { performed: ["URL structure", "Hostname patterns", "Brand look-alike comparison (local list)"].concat(idnLabels.length || ctx.nonAscii ? ["Punycode decoding and alphabet mixing"] : []),
+      checks: { performed: ["URL structure", "Hostname patterns", "Brand look-alike comparison (local list)", "Local threat list (" + threatIdx.size + " domains)"].concat(idnLabels.length || ctx.nonAscii ? ["Punycode decoding and alphabet mixing"] : []),
                 notApplicable: [].concat(idnLabels.length || ctx.nonAscii ? [] : ["Alphabet mixing: no international characters present"], isIp ? ["Brand and subdomain checks: host is an IP address"] : []),
-                unavailable, notPerformed: ["Domain age / WHOIS", "DNS and certificate lookup", "Threat-intelligence feeds", "Page content"] },
+                unavailable, notPerformed: ["Domain age / WHOIS", "DNS and certificate lookup", "Live threat-intelligence feeds", "Page content"] },
       date: new Date().toISOString()
     };
   }
-  const api = { analyze, redact, bandOf, reportText, compare, csvCell, sanitizeRecord, puny, WEIGHTS, FAMILY, BANDS };
+  const api = { parseThreatList, isProtectedDomain: isProtected, setThreatList, threatList: () => [...threatIdx.values()], cleanDomain, DOMAIN_RE, analyze, redact, bandOf, reportText, compare, csvCell, sanitizeRecord, puny, WEIGHTS, FAMILY, BANDS };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.PhishLensEngine = api;
 })(typeof window !== "undefined" ? window : globalThis);
