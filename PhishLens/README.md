@@ -43,6 +43,20 @@ Submitted URLs are analyzed in the browser and never fetched or sent anywhere. H
 - Compare two history entries, copy a privacy-redacted report, print / save as PDF (print stylesheet), delete single entries, sort and filter history, and eight annotated sample URLs (all use reserved or fictional domains).
 - Stored history is re-validated on load: malformed or tampered records are dropped or clamped, and everything is HTML-escaped.
 
+## v2.3 — motion layer (`fx.js`)
+Vanilla JS/CSS adaptations of effects from the React Bits catalog (no React, no dependencies, no network): Blur Text (hero words), Decrypted Text (verdict label; always resolves to the real verdict), Magnet (Analyze button), Spotlight Card and Glare Hover (cards follow the pointer), Fade Content (scroll reveals), Count Up (history statistics), plus a light Aurora and floating motes in the background. Results get a one-shot animation matched to their risk band. Effects are transform/opacity based, background loops pause when the tab is hidden, motes are disabled on small screens, and everything is switched off under `prefers-reduced-motion`. Animations never represent scan progress or alter any score.
+
+## v2.4 — Magnet, swarm and Star on GitHub
+- **Magnet** (`fx.js`): a vanilla port of the React Bits Magnet logic — spring physics (stiffness 170, damping 16), a 100 px pull zone with smoothstep falloff, nearest-magnet-wins, 14 px max offset. Applied to the Analyze button and the Star buttons via `data-magnet`.
+- **Swarm** (`swarm.js`): a lean vanilla port of SwarmCursor — instanced WebGL2 particles that orbit the cursor, stream behind fast movement, burst on click and roam when the pointer is away. It is decorative, confined to the hero, paused when off-screen or when the tab is hidden, disabled under `prefers-reduced-motion`, and silently skipped if WebGL2 is unavailable. Not ported: the original's grid fluid solver and pour-around-buttons targeting.
+- **Star on GitHub**: links to https://github.com/rheillunio2-byte/PhishLens (opens in a new tab with `noopener noreferrer`). It is a plain link: nothing is requested until you click it, and no star count is fetched, so the local-only guarantee holds.
+
+## v2.5 — local threat list, logo, polish
+- **Local threat list** (`engine.js`, `threats.js`): a static list of domains reported by third parties. A match is its own signal (labelled "threat list", not "heuristic"), shows a banner with the source, and floors the score at 85 (Critical). It matches the domain and its subdomains only, never look-alikes. It is a snapshot, not a live feed, and a match is a report, not proof the site is malicious today. The built-in entry is `aladel.net`, with its sources shown in the report. You can add, import (`.txt`/`.csv`: plain domains, `domain, category`, hosts files, URL lists or CSV rows incl. IPv4; 5 MB file and 20,000 entry limits; entries on big shared platforms such as Google Drive or GitHub are skipped to prevent false alarms), export and clear your own entries in Methodology. They live only in this browser's localStorage and are validated on load. Lists such as URLhaus or PhishTank exports can be imported this way.
+- Structural heuristics alone cannot know that a normal-looking domain is bad: without a list entry, `aladel.net` scores 0.
+- **Logo**: new gradient shield with a glass lens, fish-hook glyph and slow scan arc (CSS-animated inside the SVG, still under reduced motion). Variants: `phishlens-logo.svg`, `-dark`, `-light`, `phishlens-icon.svg`, `favicon.svg`.
+- **Polish**: a light beam sweeps the input only while a real analysis is running; the hero shield drifts against the pointer.
+
 ## Scoring methodology and limits
 Weights are hand-chosen, not learned from data. The 0–100 score is a priority indicator, **not a probability**; "Safe-looking" means only that none of these structural checks fired. Phishing hosted on a trusted platform (or on a brand's own subdomain) will not be caught. The brand list is small and local. Domain age, DNS, certificates, reputation feeds and page content are never consulted.
 

@@ -51,3 +51,48 @@ test("sanitizeRecord rejects garbage and clamps values", () => {
   assert.equal(r.score, 100); assert.equal(r.risk, "critical"); assert.ok(!r.normalized.includes("SECRET") && !r.normalized.includes("p@")); assert.equal(r.signals.length, 1); assert.equal(r.signals[0].weight, 0);
 });
 test("scoring is bounded across a fuzz of inputs and stays deterministic", () => { const parts = ["http://", "https://", "xn--", "paypal", "-", ".", "login", "@", ":99", "%25", "tk", "203.0.113.9", "/?url=http://a.b"]; let seed = 7; const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff; for (let i = 0; i < 300; i++) { const u = Array.from({ length: 1 + Math.floor(rnd() * 6) }, () => parts[Math.floor(rnd() * parts.length)]).join(""); try { const a = analyze(u), b = analyze(u); assert.ok(a.score >= 0 && a.score <= 100 && a.score === b.score, u); } catch (e) { assert.ok(e instanceof Error && !(e instanceof TypeError), u + " " + e); } } });
+
+// ---- v2.5: local threat list ----
+test("aladel.net is flagged Critical via the sourced local threat list, not heuristics", () => {
+  const r = analyze("http://aladel.net/"); assert.equal(r.risk, "critical"); assert.ok(r.score >= 85);
+  const s = r.signals.find(x => x.key === "threatList"); assert.ok(s && s.source === "threat-list" && /Symantec/.test(s.evidence)); assert.equal(r.threatMatch.domain, "aladel.net");
+  assert.ok(r.checks.performed.some(c => /threat list/i.test(c)));
+});
+test("threat-list matching covers subdomains but not look-alike or longer names", () => {
+  assert.ok(keys(analyze("https://www.aladel.net/x")).includes("threatList")); assert.ok(keys(analyze("https://sub.www.aladel.net")).includes("threatList"));
+  for (const u of ["https://notaladel.net", "https://aladel.net.example.org", "https://aladel.com"]) assert.ok(!keys(analyze(u)).includes("threatList"), u);
+});
+test("user-supplied threat entries work, are sanitised, and built-ins survive a reset", () => {
+  E.setThreatList([{ domain: "https://Evil-Test.example/path?x=1", category: "phishing" }, { domain: "not a domain" }, { domain: "<script>.com" }, null, 5]);
+  assert.ok(keys(analyze("https://evil-test.example")).includes("threatList")); assert.equal(E.threatList().filter(x => !x.builtin).length, 1);
+  E.setThreatList([]); assert.ok(!keys(analyze("https://evil-test.example")).includes("threatList")); assert.ok(keys(analyze("https://aladel.net")).includes("threatList"));
+});
+test("threat match is labelled as a static report in the exported text and survives record sanitising", () => {
+  const r = analyze("https://aladel.net"), t = E.reportText(r); assert.match(t, /threat list/); assert.ok(E.sanitizeRecord(r).threatMatch.domain === "aladel.net");
+  assert.ok(!E.reportText(analyze("https://aladel.net/p?token=SECRETX#f")).includes("SECRETX"));
+});
+test("a list match never lowers a high heuristic score", () => { E.setThreatList([{ domain: "paypa1-login.example.tk" }]); assert.ok(analyze("http://paypa1-login.example.tk:8080/verify?url=http://x.y").score >= 85); E.setThreatList([]); });
+
+// ---- v2.6: importable feeds ----
+test("parseThreatList understands plain, category, hosts-file, URL-list and CSV rows", () => {
+  const text = ["# comment", "plain-one.example", "cat-two.example, phishing, kit", "0.0.0.0 hosts-three.example", "http://url-four.example/a/b.exe?x=1", '"123","2026-01-01","http://csv-five.example/p","online"', "203.0.113.9", "garbage line", "plain-one.example"].join("\n");
+  const r = E.parseThreatList(text, "unit"), d = r.map(x => x.domain);
+  assert.deepEqual(d, ["plain-one.example", "cat-two.example", "hosts-three.example", "url-four.example", "csv-five.example", "203.0.113.9"]);
+  assert.equal(r[1].category, "phishing, kit"); assert.equal(r[0].source, "unit");
+});
+test("imported IPv4 hosts match, including obfuscated spellings", () => {
+  E.setThreatList(E.parseThreatList("203.0.113.9\n198.51.100.7", "unit"));
+  assert.ok(keys(analyze("http://203.0.113.9:8080/x")).includes("threatList")); assert.ok(keys(analyze("http://0xCB007109/")).includes("threatList")); assert.ok(!keys(analyze("http://203.0.113.10/")).includes("threatList"));
+  E.setThreatList([]);
+});
+test("shared platforms in a feed are skipped, so drive.google.com is not flagged", () => {
+  E.setThreatList(E.parseThreatList("https://drive.google.com/uc?id=1\nhttps://raw.githubusercontent.com/x/y\nreal-bad.example", "urlhaus"));
+  assert.ok(E.isProtectedDomain("drive.google.com") && E.isProtectedDomain("a.b.amazonaws.com") && !E.isProtectedDomain("real-bad.example"));
+  assert.equal(analyze("https://drive.google.com/file").score, 0); assert.ok(keys(analyze("https://real-bad.example")).includes("threatList")); assert.equal(E.threatList().filter(x => !x.builtin).length, 1);
+  E.setThreatList([]);
+});
+test("large imports are bounded and fast", () => {
+  const big = Array.from({ length: 30000 }, (_, i) => `bulk${i}.example`).join("\n"), t0 = Date.now();
+  E.setThreatList(E.parseThreatList(big, "bulk")); assert.equal(E.threatList().filter(x => !x.builtin).length, 20000);
+  assert.ok(keys(analyze("https://bulk5.example")).includes("threatList")); assert.ok(Date.now() - t0 < 2000); E.setThreatList([]);
+});
